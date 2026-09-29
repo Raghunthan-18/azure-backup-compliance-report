@@ -1,0 +1,106 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# Backup & DR compliance\nAzure Backup coverage and Site Recovery health across the selected subscriptions. Source: Azure Resource Graph, so results are near real time and need only Reader access."
+      },
+      "name": "header"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "8caf90e5-48f2-4bd0-9777-cda3b28a922b",
+            "version": "KqlParameterItem/1.0",
+            "name": "Subscriptions",
+            "type": 6,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "value": [
+              "value::all"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "includeAll": false,
+              "showDefault": false
+            }
+          }
+        ],
+        "style": "pills",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources"
+      },
+      "name": "params"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "resources\n| where type =~ 'microsoft.compute/virtualmachines'\n| where tostring(tags['backup-exempt']) != 'true'\n| project vmId = tolower(id), subscriptionId\n| join kind=leftouter (\n    recoveryservicesresources\n    | where type =~ 'microsoft.recoveryservices/vaults/backupfabrics/protectioncontainers/protecteditems'\n    | where tostring(properties.workloadType) =~ 'VM'\n    | where tostring(properties.protectionState) in~ ('Protected', 'IRPending', 'ProtectionError')\n    | project vmId = tolower(tostring(properties.sourceResourceId)), protected = 1\n) on vmId\n| summarize totalVms = count(), protectedVms = countif(protected == 1) by subscriptionId\n| extend coveragePct = round(100.0 * protectedVms / totalVms, 1)\n| order by coveragePct asc",
+        "size": 0,
+        "title": "Coverage by subscription",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscriptions}"
+        ],
+        "visualization": "table",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "coveragePct",
+              "formatter": 8,
+              "formatOptions": {
+                "min": 0,
+                "max": 100,
+                "palette": "redGreen"
+              }
+            }
+          ]
+        }
+      },
+      "name": "coverage-by-subscription"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "resources\n| where type =~ 'microsoft.compute/virtualmachines'\n| where tostring(tags['backup-exempt']) != 'true'\n| project vmId = tolower(id), vmName = name, resourceGroup, subscriptionId, environment = tostring(tags['environment'])\n| join kind=leftouter (\n    recoveryservicesresources\n    | where type =~ 'microsoft.recoveryservices/vaults/backupfabrics/protectioncontainers/protecteditems'\n    | where tostring(properties.workloadType) =~ 'VM'\n    | project vmId = tolower(tostring(properties.sourceResourceId)), protectionState = tostring(properties.protectionState), lastBackupStatus = tostring(properties.lastBackupStatus), lastBackupTime = todatetime(properties.lastBackupTime)\n) on vmId\n| where isempty(protectionState) or protectionState =~ 'ProtectionStopped' or lastBackupStatus =~ 'Failed' or lastBackupTime < ago(26h)\n| extend issue = case(isempty(protectionState), 'Unprotected', protectionState =~ 'ProtectionStopped', 'Stopped', lastBackupStatus =~ 'Failed', 'Failed', 'Stale')\n| project vmName, issue, resourceGroup, subscriptionId, environment, lastBackupTime\n| order by issue asc, vmName asc",
+        "size": 0,
+        "title": "VMs that need action",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscriptions}"
+        ],
+        "visualization": "table"
+      },
+      "name": "vms-that-need-action"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "recoveryservicesresources\n| where type =~ 'microsoft.recoveryservices/vaults/replicationfabrics/replicationprotectioncontainers/replicationprotecteditems'\n| project vmId = tolower(tostring(properties.providerSpecificDetails.fabricObjectId)),\n          asrVault = tostring(split(id, '/')[8]),\n          replicationHealth = tostring(properties.replicationHealth),\n          asrProtectionState = tostring(properties.protectionState),\n          rpoSeconds = toint(properties.providerSpecificDetails.rpoInSeconds),\n          lastTestFailover = tostring(properties.lastSuccessfulTestFailoverTime)\n| where isnotempty(vmId)",
+        "size": 0,
+        "title": "Site Recovery replication health",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscriptions}"
+        ],
+        "visualization": "table"
+      },
+      "name": "site-recovery-replication-health"
+    }
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}

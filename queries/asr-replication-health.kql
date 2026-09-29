@@ -1,0 +1,10 @@
+// Azure Site Recovery (Azure-to-Azure) replicated items: health, RPO and last test failover.
+recoveryservicesresources
+| where type =~ 'microsoft.recoveryservices/vaults/replicationfabrics/replicationprotectioncontainers/replicationprotecteditems'
+| project vmId = tolower(tostring(properties.providerSpecificDetails.fabricObjectId)),
+          asrVault = tostring(split(id, '/')[8]),
+          replicationHealth = tostring(properties.replicationHealth),
+          asrProtectionState = tostring(properties.protectionState),
+          rpoSeconds = toint(properties.providerSpecificDetails.rpoInSeconds),
+          lastTestFailover = tostring(properties.lastSuccessfulTestFailoverTime)
+| where isnotempty(vmId)

@@ -1,0 +1,15 @@
+// Coverage summary per subscription: how many VMs have any Azure Backup protection.
+resources
+| where type =~ 'microsoft.compute/virtualmachines'
+| where tostring(tags['backup-exempt']) != 'true'
+| project vmId = tolower(id), subscriptionId
+| join kind=leftouter (
+    recoveryservicesresources
+    | where type =~ 'microsoft.recoveryservices/vaults/backupfabrics/protectioncontainers/protecteditems'
+    | where tostring(properties.workloadType) =~ 'VM'
+    | where tostring(properties.protectionState) in~ ('Protected', 'IRPending', 'ProtectionError')
+    | project vmId = tolower(tostring(properties.sourceResourceId)), protected = 1
+) on vmId
+| summarize totalVms = count(), protectedVms = countif(protected == 1) by subscriptionId
+| extend coveragePct = round(100.0 * protectedVms / totalVms, 1)
+| order by coveragePct asc

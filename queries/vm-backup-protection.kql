@@ -1,0 +1,20 @@
+// VMs with their Azure Backup protection state. Run in Resource Graph Explorer.
+// Unprotected VMs have an empty protectionState.
+resources
+| where type =~ 'microsoft.compute/virtualmachines'
+| project vmId = tolower(id), vmName = name, resourceGroup, subscriptionId, location,
+          powerState = tostring(properties.extended.instanceView.powerState.code),
+          environment = tostring(tags['environment']),
+          backupExempt = tostring(tags['backup-exempt'])
+| join kind=leftouter (
+    recoveryservicesresources
+    | where type =~ 'microsoft.recoveryservices/vaults/backupfabrics/protectioncontainers/protecteditems'
+    | where tostring(properties.workloadType) =~ 'VM'
+    | project vmId = tolower(tostring(properties.sourceResourceId)),
+              vaultName = tostring(split(id, '/')[8]),
+              protectionState = tostring(properties.protectionState),
+              lastBackupStatus = tostring(properties.lastBackupStatus),
+              lastBackupTime = tostring(properties.lastBackupTime),
+              backupPolicy = tostring(properties.policyName)
+) on vmId
+| project-away vmId1

@@ -1,0 +1,13 @@
+// Backup jobs that failed in the last 24 hours, from Log Analytics.
+// Requires the Recovery Services vault diagnostic setting to send
+// "AddonAzureBackupJobs" and "CoreAzureBackup" in resource-specific mode.
+AddonAzureBackupJobs
+| where TimeGenerated > ago(24h)
+| where JobOperation == "Backup" and JobStatus == "Failed"
+| join kind=leftouter (
+    CoreAzureBackup
+    | where OperationName == "BackupItem"
+    | summarize arg_max(TimeGenerated, BackupItemFriendlyName) by BackupItemUniqueId
+) on BackupItemUniqueId
+| project TimeGenerated, BackupItem = BackupItemFriendlyName, JobFailureCode, JobStartDateTime, JobDurationInSecs, VaultUniqueId
+| order by TimeGenerated desc

@@ -1,0 +1,6 @@
+out/
+*.csv
+*.html
+!workbook/*.html
+testResults.xml
+.vscode/
